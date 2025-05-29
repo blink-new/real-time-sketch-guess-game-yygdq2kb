@@ -7,8 +7,9 @@ import { Eraser, Palette, RotateCcw, Circle } from 'lucide-react'
 interface DrawingCanvasProps {
   roomId: string
   playerId: string
-  isDrawing: boolean
-  currentWord?: string
+  isDrawer: boolean
+  currentWord: string | null
+  onClearCanvas: () => void
 }
 
 interface Point {
@@ -21,7 +22,7 @@ interface Point {
 
 const COLORS = ['#000000', '#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF', '#FFA500', '#800080', '#FFC0CB']
 
-export function DrawingCanvas({ roomId, playerId, isDrawing, currentWord }: DrawingCanvasProps) {
+export function DrawingCanvas({ roomId, playerId, isDrawer, currentWord, onClearCanvas }: DrawingCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [isDrawingLocal, setIsDrawingLocal] = useState(false)
   const [currentColor, setCurrentColor] = useState('#000000')
@@ -84,7 +85,7 @@ export function DrawingCanvas({ roomId, playerId, isDrawing, currentWord }: Draw
   }, [])
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawing) return
+    if (!isDrawer) return
     
     setIsDrawingLocal(true)
     const rect = canvasRef.current!.getBoundingClientRect()
@@ -103,7 +104,7 @@ export function DrawingCanvas({ roomId, playerId, isDrawing, currentWord }: Draw
   }
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawing || !isDrawingLocal) return
+    if (!isDrawer || !isDrawingLocal) return
     
     const rect = canvasRef.current!.getBoundingClientRect()
     const x = e.clientX - rect.left
@@ -133,7 +134,7 @@ export function DrawingCanvas({ roomId, playerId, isDrawing, currentWord }: Draw
   }
 
   const handleMouseUp = async () => {
-    if (!isDrawing || !isDrawingLocal || strokes.length === 0) return
+    if (!isDrawer || !isDrawingLocal || strokes.length === 0) return
     
     setIsDrawingLocal(false)
     
@@ -154,24 +155,7 @@ export function DrawingCanvas({ roomId, playerId, isDrawing, currentWord }: Draw
   }
 
   const clearCanvas = async () => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    ctx.fillStyle = 'white'
-    ctx.fillRect(0, 0, canvas.width, canvas.height)
-
-    // Clear all strokes from database (only host can do this)
-    try {
-      await supabase
-        .from('draw_strokes')
-        .delete()
-        .eq('room_id', roomId)
-    } catch (error) {
-      console.error('Failed to clear canvas:', error)
-    }
+    onClearCanvas()
   }
 
   return (
@@ -183,7 +167,7 @@ export function DrawingCanvas({ roomId, playerId, isDrawing, currentWord }: Draw
             <Palette className="w-6 h-6" />
             <span className="font-bold text-lg">Drawing Canvas</span>
           </div>
-          {currentWord && isDrawing && (
+          {currentWord && isDrawer && (
             <Badge className="bg-yellow-400 text-yellow-900 text-lg px-4 py-2">
               Draw: {currentWord}
             </Badge>
@@ -205,7 +189,7 @@ export function DrawingCanvas({ roomId, playerId, isDrawing, currentWord }: Draw
       </div>
 
       {/* Drawing Tools */}
-      {isDrawing && (
+      {isDrawer && (
         <div className="p-4 bg-gradient-to-r from-blue-100 to-purple-100 border-t-2 border-purple-200">
           <div className="flex flex-wrap items-center gap-4">
             {/* Color Palette */}
@@ -273,7 +257,7 @@ export function DrawingCanvas({ roomId, playerId, isDrawing, currentWord }: Draw
       )}
 
       {/* Non-drawing state */}
-      {!isDrawing && (
+      {!isDrawer && (
         <div className="p-8 text-center bg-gradient-to-r from-gray-100 to-blue-100">
           <p className="text-xl text-gray-600 font-semibold">
             👀 Watch and guess what's being drawn!

@@ -3,37 +3,35 @@ import { GameLobby } from './components/GameLobby'
 import { GameBoard } from './components/GameBoard'
 import './App.css'
 
-type AppState = 'lobby' | 'game'
-
 function App() {
-  const [appState, setAppState] = useState<AppState>('lobby')
+  const [gameState, setGameState] = useState<'lobby' | 'playing'>('lobby')
   const [currentRoomId, setCurrentRoomId] = useState<string>('')
   const [currentPlayerId, setCurrentPlayerId] = useState<string>('')
 
   const handleStartGame = (roomId: string, playerId: string) => {
     setCurrentRoomId(roomId)
     setCurrentPlayerId(playerId)
-    setAppState('game')
+    setGameState('playing')
   }
 
   const handleLeaveGame = () => {
-    setAppState('lobby')
+    setGameState('lobby')
     setCurrentRoomId('')
     setCurrentPlayerId('')
   }
 
-  if (appState === 'game') {
-    return (
-      <GameBoard 
-        roomId={currentRoomId}
-        playerId={currentPlayerId}
-        onLeaveGame={handleLeaveGame}
-      />
-    )
-  }
-
   return (
-    <GameLobby onStartGame={handleStartGame} />
+    <div className="min-h-screen">
+      {gameState === 'lobby' ? (
+        <GameLobby onStartGame={handleStartGame} />
+      ) : (
+        <GameBoard 
+          roomId={currentRoomId}
+          playerId={currentPlayerId}
+          onLeaveGame={handleLeaveGame}
+        />
+      )}
+    </div>
   )
 }
 
