@@ -44,9 +44,40 @@ export function GameLobby({ onStartGame }: GameLobbyProps) {
     fetchActiveRooms()
   }, [])
 
+  // Set up real-time subscriptions when in a room
   useEffect(() => {
-    if (currentRoom) {
-      fetchPlayers()
+    if (!currentRoom) return
+
+    const roomChannel = supabase
+      .channel(`room-${currentRoom.id}`)
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'game_rooms', filter: `id=eq.${currentRoom.id}` },
+        (payload) => {
+          console.log('Room updated:', payload)
+          if (payload.eventType === 'UPDATE') {
+            setCurrentRoom(payload.new as GameRoom)
+          }
+        }
+      )
+      .subscribe()
+
+    const playersChannel = supabase
+      .channel(`players-${currentRoom.id}`)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'players', filter: `room_id=eq.${currentRoom.id}` },
+        () => {
+          console.log('Players updated')
+          fetchPlayersInRoom(currentRoom.id)
+        }
+      )
+      .subscribe()
+
+    // Initial fetch of players
+    fetchPlayersInRoom(currentRoom.id)
+
+    return () => {
+      supabase.removeChannel(roomChannel)
+      supabase.removeChannel(playersChannel)
     }
   }, [currentRoom])
 
@@ -58,6 +89,7 @@ export function GameLobby({ onStartGame }: GameLobbyProps) {
       .order('created_at', { ascending: false })
 
     if (error) {
+      console.error('Error fetching rooms:', error)
       toast.error('Failed to fetch rooms')
       return
     }
@@ -65,17 +97,15 @@ export function GameLobby({ onStartGame }: GameLobbyProps) {
     setRooms(data || [])
   }
 
-  const fetchPlayers = async () => {
-    if (!currentRoom) return
-    
+  const fetchPlayersInRoom = async (roomId: string) => {
     const { data, error } = await supabase
       .from('players')
       .select('*')
-      .eq('room_id', currentRoom.id)
-      .order('score', { ascending: false })
+      .eq('room_id', roomId)
+      .order('created_at', { ascending: true })
 
     if (error) {
-      toast.error('Failed to fetch players')
+      console.error('Error fetching players:', error)
       return
     }
 
@@ -95,33 +125,49 @@ export function GameLobby({ onStartGame }: GameLobbyProps) {
         .from('game_rooms')
         .insert({
           name: `${playerName}'s Room`,
-          host_id: crypto.randomUUID()
+          host_id: crypto.randomUUID(),
+          max_rounds: 5,
+          time_per_round: 60,
+          round_number: 1,
+          is_active: true
         })
         .select()
         .single()
 
-      if (roomError) throw roomError
+      if (roomError) {
+        console.error('Room creation error:', roomError)
+        throw roomError
+      }
+
+      console.log('Room created:', roomData)
 
       // Create player
       const { data: playerData, error: playerError } = await supabase
         .from('players')
         .insert({
           room_id: roomData.id,
-          name: playerName,
-          is_host: true
+          name: playerName.trim(),
+          is_host: true,
+          score: 0,
+          is_online: true
         })
         .select()
         .single()
 
-      if (playerError) throw playerError
+      if (playerError) {
+        console.error('Player creation error:', playerError)
+        throw playerError
+      }
+
+      console.log('Player created:', playerData)
 
       setCurrentRoom(roomData)
       setCurrentPlayer(playerData)
-      toast.success('Room created!')
+      toast.success('Room created! Share the room code with friends.')
       
     } catch (error) {
+      console.error('Create room error:', error)
       toast.error('Failed to create room')
-      console.error(error)
     } finally {
       setIsLoading(false)
     }
@@ -135,35 +181,80 @@ export function GameLobby({ onStartGame }: GameLobbyProps) {
 
     setIsLoading(true)
     try {
+      // First check if room exists
+      const { data: roomData, error: roomError } = await supabase
+        .from('game_rooms')
+        .select('*')
+        .eq('id', roomId)
+        .eq('is_active', true)
+        .single()
+
+      if (roomError || !roomData) {
+        throw new Error('Room not found or inactive')
+      }
+
       // Create player
       const { data: playerData, error: playerError } = await supabase
         .from('players')
         .insert({
           room_id: roomId,
-          name: playerName,
-          is_host: false
+          name: playerName.trim(),
+          is_host: false,
+          score: 0,
+          is_online: true
         })
         .select()
         .single()
 
-      if (playerError) throw playerError
+      if (playerError) {
+        console.error('Player join error:', playerError)
+        throw playerError
+      }
 
-      const room = rooms.find(r => r.id === roomId)
-      setCurrentRoom(room || null)
+      console.log('Player joined:', playerData)
+
+      setCurrentRoom(roomData)
       setCurrentPlayer(playerData)
       toast.success('Joined room!')
       
     } catch (error) {
+      console.error('Join room error:', error)
       toast.error('Failed to join room')
-      console.error(error)
     } finally {
       setIsLoading(false)
     }
   }
 
-  const startGame = () => {
-    if (currentRoom && currentPlayer) {
+  const startGame = async () => {
+    if (!currentRoom || !currentPlayer || !currentPlayer.is_host) {
+      toast.error('Only the host can start the game')
+      return
+    }
+
+    if (players.length < 2) {
+      toast.error('Need at least 2 players to start')
+      return
+    }
+
+    try {
+      // Pick a random word and first player
+      const words = ['Cat', 'Dog', 'House', 'Tree', 'Car', 'Sun', 'Moon', 'Star', 'Fish', 'Bird']
+      const randomWord = words[Math.floor(Math.random() * words.length)]
+      const firstPlayer = players.find(p => p.is_host) || players[0]
+
+      await supabase
+        .from('game_rooms')
+        .update({
+          current_player_id: firstPlayer.id,
+          current_word: randomWord,
+          round_number: 1
+        })
+        .eq('id', currentRoom.id)
+
       onStartGame(currentRoom.id, currentPlayer.id)
+    } catch (error) {
+      console.error('Start game error:', error)
+      toast.error('Failed to start game')
     }
   }
 
