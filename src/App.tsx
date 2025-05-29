@@ -1,50 +1,39 @@
 import { useState } from 'react'
-import { Toaster } from 'react-hot-toast'
 import { GameLobby } from './components/GameLobby'
 import { GameBoard } from './components/GameBoard'
 import './App.css'
 
+type AppState = 'lobby' | 'game'
+
 function App() {
-  const [gameState, setGameState] = useState<'lobby' | 'playing'>('lobby')
-  const [currentRoomId, setCurrentRoomId] = useState<string | null>(null)
-  const [currentPlayerId, setCurrentPlayerId] = useState<string | null>(null)
+  const [appState, setAppState] = useState<AppState>('lobby')
+  const [currentRoomId, setCurrentRoomId] = useState<string>('')
+  const [currentPlayerId, setCurrentPlayerId] = useState<string>('')
 
   const handleStartGame = (roomId: string, playerId: string) => {
     setCurrentRoomId(roomId)
     setCurrentPlayerId(playerId)
-    setGameState('playing')
+    setAppState('game')
   }
 
-  const handleBackToLobby = () => {
-    setGameState('lobby')
-    setCurrentRoomId(null)
-    setCurrentPlayerId(null)
+  const handleLeaveGame = () => {
+    setAppState('lobby')
+    setCurrentRoomId('')
+    setCurrentPlayerId('')
+  }
+
+  if (appState === 'game') {
+    return (
+      <GameBoard 
+        roomId={currentRoomId}
+        playerId={currentPlayerId}
+        onLeaveGame={handleLeaveGame}
+      />
+    )
   }
 
   return (
-    <>
-      {gameState === 'lobby' ? (
-        <GameLobby onStartGame={handleStartGame} />
-      ) : (
-        <GameBoard 
-          roomId={currentRoomId!}
-          playerId={currentPlayerId!}
-          onBackToLobby={handleBackToLobby}
-        />
-      )}
-      <Toaster 
-        position="top-center"
-        toastOptions={{
-          duration: 3000,
-          style: {
-            background: '#363636',
-            color: '#fff',
-            borderRadius: '10px',
-            border: '2px solid #4f46e5',
-          },
-        }}
-      />
-    </>
+    <GameLobby onStartGame={handleStartGame} />
   )
 }
 
