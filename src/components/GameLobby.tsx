@@ -44,6 +44,14 @@ export function GameLobby({ onStartGame }: GameLobbyProps) {
     fetchActiveRooms()
   }, [])
 
+  useEffect(() => {
+    fetchActiveRooms()
+    if (currentRoom) {
+      fetchPlayers()
+      setupPlayerSubscription()
+    }
+  }, [currentRoom])
+
   // Set up real-time subscriptions when in a room
   useEffect(() => {
     if (!currentRoom) return
@@ -95,6 +103,46 @@ export function GameLobby({ onStartGame }: GameLobbyProps) {
     }
 
     setRooms(data || [])
+  }
+
+  const fetchPlayers = async () => {
+    if (!currentRoom) return
+
+    const { data, error } = await supabase
+      .from('players')
+      .select('*')
+      .eq('room_id', currentRoom.id)
+      .order('created_at', { ascending: true })
+
+    if (error) {
+      console.error('Failed to fetch players:', error)
+      return
+    }
+
+    setPlayers(data || [])
+  }
+
+  const setupPlayerSubscription = () => {
+    if (!currentRoom) return
+
+    const subscription = supabase
+      .channel(`lobby-players-${currentRoom.id}`)
+      .on('postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'players',
+          filter: `room_id=eq.${currentRoom.id}`
+        },
+        () => {
+          fetchPlayers()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      subscription.unsubscribe()
+    }
   }
 
   const fetchPlayersInRoom = async (roomId: string) => {
